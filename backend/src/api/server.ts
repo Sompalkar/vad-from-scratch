@@ -3,6 +3,7 @@ import { decodeWav } from "../audio/wav.js";
 import { frameMetrics, segmentsToFrames } from "../eval/metrics.js";
 import { createDetector, DETECTORS, isDetectorName } from "../vad/index.js";
 import type { Segment } from "../vad/smoothing.js";
+import { listSamples, readSample } from "./samples.js";
 import { waveformPeaks } from "./waveform.js";
 
 const MAX_BODY_BYTES = 50 * 1024 * 1024;
@@ -30,6 +31,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       await handleVad(req, res, url);
     } else if (req.method === "POST" && url.pathname === "/evaluate") {
       await handleEvaluate(req, res);
+    } else if (req.method === "GET" && url.pathname === "/samples") {
+      json(res, 200, await listSamples());
+    } else if (req.method === "GET" && url.pathname.startsWith("/samples/")) {
+      await handleSample(res, url.pathname.slice("/samples/".length));
     } else {
       json(res, 404, { error: "Not found" });
     }
@@ -76,6 +81,13 @@ async function handleEvaluate(req: IncomingMessage, res: ServerResponse): Promis
   const body = JSON.parse((await readBody(req)).toString("utf8")) as EvaluateBody;
   const truthFrames = segmentsToFrames(body.truth, body.frameTimes);
   json(res, 200, frameMetrics(body.frameDecisions, truthFrames));
+}
+
+async function handleSample(res: ServerResponse, file: string): Promise<void> {
+  const data = await readSample(file);
+  const type = file.endsWith(".json") ? "application/json" : "audio/wav";
+  res.writeHead(200, { "Content-Type": type });
+  res.end(data);
 }
 
 function readBody(req: IncomingMessage): Promise<Buffer> {

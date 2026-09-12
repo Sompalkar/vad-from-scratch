@@ -19,12 +19,24 @@ See [NOTES.md](NOTES.md) for the build log: decisions, problems hit, and how the
 
 ## Run
 
+Backend (port 4000):
+
 ```bash
 cd backend && npm install && npm run samples && npm run dev
 ```
+
+Frontend (port 3000):
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Open http://localhost:3000, pick a sample or upload a WAV, switch detectors and compare.
+
+Or hit the API directly:
 
 ```bash
 curl -X POST "localhost:4000/vad?method=spectral" --data-binary @samples/with-noise-bursts.wav
 ```
 
-`npm test` runs the unit and API tests.
+`cd backend && npm test` runs the unit and API tests.

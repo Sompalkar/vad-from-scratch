@@ -80,3 +80,16 @@ Radix-2 Cooley–Tukey, validated against an O(n²) reference DFT to 9 decimal p
 | spectral | 2 (correct) | 8.9 ms |
 
 Spectral F1 0.95, recall 1.0, precision 0.91 — the precision loss is the hangover tail on each segment.
+
+### 4. React 19 lint: no `setState` synchronously inside an effect
+
+**Symptom:** `react-hooks/set-state-in-effect` errored on `setBusy(true)` at the top of a `useEffect` that re-ran detection when `[audio, method]` changed, and on the reset in the playback hook's effect.
+
+**Fix:** stop using effects for user-triggered work. `analyze(audio, method)` is a plain async function called from the sample/upload/detector handlers; `usePlayback` exposes `load(wav)` instead of watching a prop. The only remaining effect is the one-time samples fetch and the unmount cleanup. Less code, and it matches what the React docs recommend ("you might not need an effect").
+
+### Design: what the UI shows and why
+
+- **Waveform** with detected regions shaded and ground truth as a thin band underneath — disagreements are visible at a glance.
+- **Frame energy track** with the adaptive threshold as a dashed line. This is the detector's actual decision surface; on `with-noise-bursts` the burst sits *above* the line but stays grey under spectral, which is the whole point of that detector.
+- **Metrics** update live when switching detector — on the burst sample precision goes 90.9% (spectral) → 66.7% (energy).
+- Waveform peaks come pre-downsampled from the backend (2000 min/max pairs) so the browser never touches raw samples.
