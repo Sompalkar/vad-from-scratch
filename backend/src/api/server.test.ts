@@ -61,3 +61,21 @@ describe("POST /evaluate", () => {
     expect(metrics.f1).toBeGreaterThan(0.85);
   });
 });
+
+describe("GET /samples", () => {
+  it("lists bundled samples with label availability", async () => {
+    const list = await (await fetch(`${base}/samples`)).json();
+    expect(list).toContainEqual({ name: "clean-single", hasLabels: true });
+  });
+
+  it("serves a sample wav", async () => {
+    const res = await fetch(`${base}/samples/clean-single.wav`);
+    expect(res.headers.get("content-type")).toBe("audio/wav");
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(44);
+  });
+
+  it("refuses path traversal", async () => {
+    const res = await fetch(`${base}/samples/..%2Fpackage.json`);
+    expect(res.status).toBe(400);
+  });
+});
