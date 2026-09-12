@@ -33,3 +33,29 @@ _(appended as we go)_
 ### Design: adaptive threshold via percentile
 
 A fixed dB threshold breaks the moment the recording environment changes. We take the 10th percentile of frame energies as the noise floor and threshold 12 dB above it. Percentile (not min) so one freak frame of digital silence doesn't drag the floor to −200 dB; a `floorDb` clamp handles the all-silence file, where otherwise everything would be "speech".
+
+### 2. Spectral VAD detected nothing — the test fixture was wrong
+
+**Symptom:** new spectral detector returned zero segments on synthetic speech that energy VAD handled fine.
+
+**Investigation:** printed the three features for one silence, one speech, one noise-burst frame:
+
+| frame | dB | flatness | band ratio (300–3400 Hz) |
+|---|---|---|---|
+| silence | −46 | 0.81 | 0.39 |
+| speech | −18 | 0.18 | **0.15** |
+| burst | −11 | 0.88 | 0.44 |
+
+Flatness separated speech from noise perfectly. Band ratio failed — the synthetic "speech" was five harmonics of 120 Hz with 1/n amplitudes, so 85% of its energy was *below* 300 Hz. Real speech isn't shaped like that: the vocal tract's formants (~500–2500 Hz) boost the mid harmonics, and that's where the energy lives.
+
+**Fix:** the fixture, not the detector. Synthetic speech now uses 25 harmonics shaped by a three-formant Gaussian envelope. Band ratio → 1.0, all tests pass.
+
+**Lesson:** when a detector "fails", measure the features before touching thresholds. The detector was right; the fake data wasn't speech.
+
+### Design: why flatness + band ratio on top of energy
+
+Energy VAD calls any loud sound speech. The two spectral checks encode what speech *is*: harmonic (low flatness) and mid-band (300–3400 Hz). White noise is flat (0.8+) and spreads evenly across 0–8 kHz (band ratio ≈ 0.4). Test `rejects a loud noise burst` shows energy VAD returning 2 segments vs spectral returning 1 on the same audio.
+
+### Design: hand-written FFT
+
+Radix-2 Cooley–Tukey, validated against an O(n²) reference DFT to 9 decimal places. Frames are Hann-windowed before the FFT — without the window, the hard frame edges leak energy into every bin and flatness reads as "noise" for everything.

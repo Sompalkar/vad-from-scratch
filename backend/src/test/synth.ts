@@ -19,11 +19,22 @@ export interface SynthOptions {
   speechLevel?: number;
   /** RMS amplitude of background noise. 0 = digital silence. */
   noiseLevel?: number;
+  /** Loud broadband noise bursts — "not speech" that an energy VAD will flag. */
+  bursts?: SynthRegion[];
+  burstLevel?: number;
   seed?: number;
 }
 
 export function synthesize(opts: SynthOptions): Float32Array {
-  const { durationSec, speech, speechLevel = 0.3, noiseLevel = 0.005, seed = 1 } = opts;
+  const {
+    durationSec,
+    speech,
+    speechLevel = 0.3,
+    noiseLevel = 0.005,
+    bursts = [],
+    burstLevel = 0.3,
+    seed = 1,
+  } = opts;
   const rand = mulberry32(seed);
   const out = new Float32Array(Math.round(durationSec * SAMPLE_RATE));
 
@@ -31,21 +42,45 @@ export function synthesize(opts: SynthOptions): Float32Array {
     out[i] = noiseLevel * gaussian(rand);
   }
 
-  // Voiced speech ≈ harmonic series on a ~120 Hz fundamental
-  const harmonics = [120, 240, 360, 480, 600];
+  // Voiced speech: harmonics of a ~120 Hz pitch, shaped by vocal-tract
+  // formants. Without the formant envelope almost all energy sits below
+  // 300 Hz, which real speech does not do.
+  const pitchHz = 120;
+  const harmonics = Array.from({ length: 25 }, (_, h) => (h + 1) * pitchHz);
+  const amplitudes = harmonics.map(formantEnvelope);
   for (const region of speech) {
     const a = Math.round(region.start * SAMPLE_RATE);
     const b = Math.min(out.length, Math.round(region.end * SAMPLE_RATE));
     for (let i = a; i < b; i++) {
       let s = 0;
       for (let h = 0; h < harmonics.length; h++) {
-        const amp = 1 / (h + 1);
-        s += amp * Math.sin((2 * Math.PI * (harmonics[h] ?? 0) * i) / SAMPLE_RATE);
+        s += (amplitudes[h] ?? 0) * Math.sin((2 * Math.PI * (harmonics[h] ?? 0) * i) / SAMPLE_RATE);
       }
-      out[i] = (out[i] ?? 0) + speechLevel * s * 0.5;
+      out[i] = (out[i] ?? 0) + speechLevel * s;
+    }
+  }
+  for (const region of bursts) {
+    const a = Math.round(region.start * SAMPLE_RATE);
+    const b = Math.min(out.length, Math.round(region.end * SAMPLE_RATE));
+    for (let i = a; i < b; i++) {
+      out[i] = (out[i] ?? 0) + burstLevel * gaussian(rand);
     }
   }
   return out;
+}
+
+/** Gain at a frequency from three Gaussian formant peaks (roughly an "ah"). */
+function formantEnvelope(hz: number): number {
+  const formants = [
+    { hz: 700, bw: 130, gain: 1 },
+    { hz: 1200, bw: 150, gain: 0.5 },
+    { hz: 2500, bw: 200, gain: 0.25 },
+  ];
+  let gain = 0.02;
+  for (const f of formants) {
+    gain += f.gain * Math.exp(-0.5 * ((hz - f.hz) / f.bw) ** 2);
+  }
+  return gain;
 }
 
 /** Small deterministic PRNG so tests are reproducible. */
