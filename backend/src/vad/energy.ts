@@ -7,6 +7,7 @@
  */
 
 import { DEFAULT_FRAME_CONFIG, frameSignal, type FrameConfig } from "../audio/frames.js";
+import { percentile } from "../dsp/stats.js";
 import { energyDb } from "./features.js";
 import { smooth, toSegments, type SmoothingConfig } from "./smoothing.js";
 import type { VadDetector, VadResult } from "./types.js";
@@ -52,11 +53,4 @@ export function createEnergyVad(config: EnergyVadConfig = DEFAULT_ENERGY_CONFIG)
       };
     },
   };
-}
-
-function percentile(values: number[], p: number): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.floor(p * sorted.length));
-  return sorted[index] ?? 0;
 }

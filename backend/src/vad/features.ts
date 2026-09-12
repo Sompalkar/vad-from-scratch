@@ -39,3 +39,45 @@ export function zeroCrossingRate(frame: Float32Array): number {
   }
   return crossings / (frame.length - 1);
 }
+
+/**
+ * Spectral flatness (Wiener entropy): geometric mean / arithmetic mean of the
+ * magnitude spectrum, in [0, 1]. White noise → ~1 (flat). Voiced speech has
+ * energy concentrated at harmonics → close to 0.
+ */
+export function spectralFlatness(magnitude: Float64Array): number {
+  const EPS = 1e-12;
+  let logSum = 0;
+  let sum = 0;
+  for (let k = 0; k < magnitude.length; k++) {
+    const m = (magnitude[k] ?? 0) + EPS;
+    logSum += Math.log(m);
+    sum += m;
+  }
+  const geometric = Math.exp(logSum / magnitude.length);
+  const arithmetic = sum / magnitude.length;
+  return geometric / arithmetic;
+}
+
+/**
+ * Fraction of spectral energy inside [lowHz, highHz], in [0, 1].
+ * Speech is concentrated in ~300–3400 Hz; broadband noise is not.
+ */
+export function bandEnergyRatio(
+  magnitude: Float64Array,
+  sampleRate: number,
+  lowHz: number,
+  highHz: number,
+): number {
+  const EPS = 1e-12;
+  const binHz = sampleRate / 2 / (magnitude.length - 1);
+  let inBand = 0;
+  let total = 0;
+  for (let k = 0; k < magnitude.length; k++) {
+    const power = (magnitude[k] ?? 0) ** 2;
+    total += power;
+    const hz = k * binHz;
+    if (hz >= lowHz && hz <= highHz) inBand += power;
+  }
+  return inBand / (total + EPS);
+}
