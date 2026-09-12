@@ -21,8 +21,11 @@ const FORMAT_PCM = 1;
 const FORMAT_FLOAT = 3;
 const FORMAT_EXTENSIBLE = 0xfffe;
 
-export function decodeWav(buffer: ArrayBuffer): PcmAudio {
-  const view = new DataView(buffer);
+export function decodeWav(input: ArrayBuffer | Uint8Array): PcmAudio {
+  const view =
+    input instanceof Uint8Array
+      ? new DataView(input.buffer, input.byteOffset, input.byteLength)
+      : new DataView(input);
 
   if (view.getUint32(0, false) !== RIFF || view.getUint32(8, false) !== WAVE) {
     throw new Error("Not a RIFF/WAVE file");
