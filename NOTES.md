@@ -59,3 +59,24 @@ Energy VAD calls any loud sound speech. The two spectral checks encode what spee
 ### Design: hand-written FFT
 
 Radix-2 Cooley–Tukey, validated against an O(n²) reference DFT to 9 decimal places. Frames are Hann-windowed before the FFT — without the window, the hard frame edges leak energy into every bin and flatness reads as "noise" for everything.
+
+### 3. `Buffer.buffer` is `ArrayBuffer | SharedArrayBuffer`
+
+**Symptom:** `decodeWav(body.buffer.slice(...))` failed to typecheck — Node types allow a `Buffer` to be backed by a `SharedArrayBuffer`, and `DataView` wants a plain `ArrayBuffer`.
+
+**Fix:** `decodeWav` now accepts `Uint8Array | ArrayBuffer` and builds the `DataView` over `(buffer, byteOffset, byteLength)`. Cleaner API for callers *and* avoids copying the request body.
+
+### Design: API shape
+
+- `POST /vad?method=…` takes raw WAV bytes (no multipart — simpler client and server), returns segments, per-frame scores/decisions, threshold, timing, and min/max waveform peaks downsampled to 2000 points for drawing.
+- `POST /evaluate` takes the frame decisions back plus ground-truth segments and returns P/R/F1. Kept separate so `/vad` doesn't need to know about labels.
+- Plain `node:http`, no framework. Two routes don't justify a dependency.
+
+### Observation: energy vs spectral on `with-noise-bursts.wav`
+
+| method | segments found | time |
+|---|---|---|
+| energy | 3 (includes the burst) | 1.4 ms |
+| spectral | 2 (correct) | 8.9 ms |
+
+Spectral F1 0.95, recall 1.0, precision 0.91 — the precision loss is the hangover tail on each segment.
