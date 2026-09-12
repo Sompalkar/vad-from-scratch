@@ -21,3 +21,15 @@ The hard part is not the "obvious" cases (loud clear speech vs total silence). I
 ## Issues & decisions
 
 _(appended as we go)_
+
+### 1. Hangover shifts segment ends (energy VAD)
+
+**Symptom:** test expected speech to end at 2.00 s, detector said 2.08 s.
+
+**Cause:** not a bug. The hangover keeps "speech" on for 8 frames (80 ms) after energy drops, so trailing consonants and short intra-word gaps aren't chopped. Every segment end is therefore late by up to `hangoverFrames × hop`.
+
+**Fix:** test asserts `end ∈ [2.0, 2.0 + hangover]`. Worth remembering: hangover trades end-precision for recall. If exact boundaries matter (e.g. for alignment), post-trim segments by the hangover length.
+
+### Design: adaptive threshold via percentile
+
+A fixed dB threshold breaks the moment the recording environment changes. We take the 10th percentile of frame energies as the noise floor and threshold 12 dB above it. Percentile (not min) so one freak frame of digital silence doesn't drag the floor to −200 dB; a `floorDb` clamp handles the all-silence file, where otherwise everything would be "speech".
