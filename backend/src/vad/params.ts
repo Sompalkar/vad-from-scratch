@@ -37,6 +37,8 @@ export const PARAM_SPECS: Record<string, ParamSpec[]> = {
   ],
   learned: [
     { key: "threshold", label: "Probability threshold", min: 0.05, max: 0.95, step: 0.05, default: 0.5 },
+    { key: "marginDb", label: "Enter margin (dB)", min: 0, max: 30, step: 1, default: 8 },
+    { key: "exitMarginDb", label: "Exit margin (dB)", min: 0, max: 30, step: 1, default: 4 },
     { key: "smoothingWindow", label: "Smoothing window (frames)", min: 1, max: 21, step: 2, default: 7 },
     ...SMOOTHING,
   ],

@@ -7,6 +7,7 @@
  */
 import { DEFAULT_FRAME_CONFIG } from "../audio/frames.js";
 import { magnitudeSpectrum } from "../dsp/fft.js";
+import { DEFAULT_HIGHPASS_HZ, HighPass } from "../dsp/filter.js";
 import { predict, type LogisticModel } from "../ml/logistic.js";
 import { bandEnergyRatio, energyDb, spectralFlatness, zeroCrossingRate } from "./features.js";
 import model from "./model.json" with { type: "json" };
@@ -14,6 +15,9 @@ import model from "./model.json" with { type: "json" };
 export interface StreamingConfig {
   threshold: number;
   hangoverFrames: number;
+  /** Energy gate above the running noise floor, dB (enter / stay). */
+  marginDb: number;
+  exitMarginDb: number;
   /** Floor adaptation rate per non-speech frame (0–1). */
   floorRise: number;
   floorFall: number;
@@ -26,6 +30,8 @@ export interface StreamingConfig {
 export const DEFAULT_STREAMING_CONFIG: StreamingConfig = {
   threshold: 0.5,
   hangoverFrames: 4,
+  marginDb: 8,
+  exitMarginDb: 4,
   floorRise: 0.05,
   floorFall: 0.2,
   floorLeak: 0.0005,
@@ -47,6 +53,8 @@ export class StreamingVad {
   private samplesSeen = 0;
   private noiseFloorDb: number;
   private hangover = 0;
+  private loud = false;
+  private readonly filter: HighPass;
 
   constructor(
     private readonly sampleRate: number,
@@ -57,11 +65,12 @@ export class StreamingVad {
     this.hopLength = Math.round((DEFAULT_FRAME_CONFIG.hopMs / 1000) * sampleRate);
     this.buffer = new Float32Array(this.frameLength * 4);
     this.noiseFloorDb = config.initialFloorDb;
+    this.filter = new HighPass(sampleRate, DEFAULT_HIGHPASS_HZ);
   }
 
   /** Push a chunk of samples; returns every frame completed by this chunk. */
   push(chunk: Float32Array): StreamFrame[] {
-    this.append(chunk);
+    this.append(this.filter.process(Float32Array.from(chunk)));
     const out: StreamFrame[] = [];
 
     while (this.buffered >= this.frameLength) {
@@ -85,10 +94,13 @@ export class StreamingVad {
       zeroCrossingRate(frame),
     ]);
 
-    this.updateNoiseFloor(db, score > this.config.threshold);
+    const above = db - this.noiseFloorDb;
+    this.loud = this.loud ? above >= this.config.exitMarginDb : above > this.config.marginDb;
+    const isSpeech = this.loud && score > this.config.threshold;
+    this.updateNoiseFloor(db, isSpeech);
 
     let speech: boolean;
-    if (score > this.config.threshold) {
+    if (isSpeech) {
       this.hangover = this.config.hangoverFrames;
       speech = true;
     } else if (this.hangover > 0) {

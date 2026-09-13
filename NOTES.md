@@ -208,3 +208,29 @@ The residual thinness is the model, not the tuning: one frame of features can't 
 ### Fixture note: speech levels
 
 First real-speech fixtures normalised speech to −20 dBFS *peak*, which puts its RMS around −32 dB — the same as the noise. Every detector scored 0% on `speech-noisy`. A normal mic peaks near −6 dBFS; fixed to 0.5 peak. Wrong fixture levels make every detector look broken.
+
+### 12. Live mode never turned off — real room silence is *tonal*
+
+**Symptom (reported from a real Chrome session):** `/live` lit up SPEECH on the first word and never went back to silence. Offline, the learned detector called a 31 s recording of a real voice one continuous segment: `0.00–31.38`.
+
+**Investigation:** features on the recording's silence frames: flatness 0.1–0.4, ZCR 0.02–0.08, energy 1–5 dB above floor. Low flatness + low ZCR is the fingerprint of *voiced speech* — and of a laptop fan. Spectrum of a silence frame: 56–79 % of energy below 100 Hz, peaking at 63 Hz, with harmonics at 156–313 Hz. The training data's silence had always been white noise (flat, high ZCR), so the model learned "tonal and low-crossing ⇒ speech" and every quiet frame in a real room passed.
+
+Energy and spectral were fine on the same file — both have an energy gate.
+
+**Fixes:**
+
+1. **High-pass filter at 100 Hz** in front of every detector (`dsp/filter.ts`, second-order Butterworth). A first-order filter was tried first and barely dented 63 Hz. Standard front end in every practical VAD.
+2. **Energy gate on the learned detector and the streaming detector** (enter +8 dB, exit +4 dB, hysteresis). The model now *refines* loud frames instead of overruling silence. This is the same architecture spectral already had, and it is the actual fix — the HPF alone didn't move flatness, because the room's fan harmonics are above 100 Hz.
+3. **Room noise in the fixtures** (60 Hz hum + harmonics + brown rumble) so the model trains on tonal silence. After retraining, the energy weight went 0.70 → 1.24: the model learned loudness matters more than tonality.
+
+**Result:** streaming on the real recording — longest continuous speech 1.7 s (was: the whole file), 93.5 % agreement with the offline spectral detector. All three offline detectors give ~19 near-identical phrase segments.
+
+**Lesson:** synthetic silence is the most unrealistic part of synthetic audio. Real rooms hum.
+
+### 13. Class imbalance after adding room noise
+
+Retraining on the room-noise files fixed real silence but dropped the burst files to 82 % — bursts were ~150 of 8,800 frames, so the model stopped caring. Added burst-heavy fixtures (`many-bursts`, second bursts in two speech files). Bursts back to 97 % with real speech unchanged. Balance the classes; don't hand-edit the weights.
+
+### Fixture bug: NaN silently became silence
+
+Adding room noise to the speech generator produced files of pure zeros. `roomNoise()` expected a *uniform* random source and was given a *normal* one; `Math.log(1 − 1.7)` is NaN, `0 × NaN` is NaN, and the WAV encoder's clamp turned NaN into 0. Every detector scored 0 % on six files before the cause was found. A peak-amplitude sanity check on generated fixtures would have caught it in seconds.

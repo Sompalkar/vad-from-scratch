@@ -6,6 +6,7 @@ import { DEFAULT_FRAME_CONFIG, frameSignal } from "../audio/frames.js";
 import { magnitudeSpectrum } from "../dsp/fft.js";
 import { percentile } from "../dsp/stats.js";
 import { bandEnergyRatio, energyDb, spectralFlatness, zeroCrossingRate } from "./features.js";
+import { preprocess } from "./preprocess.js";
 
 export const FEATURE_NAMES = ["energyAboveFloor", "flatness", "bandRatio", "zcr"] as const;
 
@@ -14,9 +15,12 @@ export interface FrameFeatures {
   times: number[];
   hopSeconds: number;
   noiseFloorDb: number;
+  /** Raw per-frame dB, kept so detectors can apply an energy gate. */
+  energiesDb: number[];
 }
 
-export function extractFrameFeatures(samples: Float32Array, sampleRate: number): FrameFeatures {
+export function extractFrameFeatures(input: Float32Array, sampleRate: number): FrameFeatures {
+  const samples = preprocess(input, sampleRate);
   const { frames, times, hopLength } = frameSignal(samples, sampleRate, DEFAULT_FRAME_CONFIG);
   const energies = frames.map(energyDb);
   // Energy is expressed relative to this file's noise floor so the model
@@ -33,5 +37,5 @@ export function extractFrameFeatures(samples: Float32Array, sampleRate: number):
     ];
   });
 
-  return { features, times, hopSeconds: hopLength / sampleRate, noiseFloorDb };
+  return { features, times, hopSeconds: hopLength / sampleRate, noiseFloorDb, energiesDb: energies };
 }

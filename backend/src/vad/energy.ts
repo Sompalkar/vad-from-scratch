@@ -10,6 +10,7 @@ import { DEFAULT_FRAME_CONFIG, frameSignal, type FrameConfig } from "../audio/fr
 import { percentile } from "../dsp/stats.js";
 import { energyDb } from "./features.js";
 import { hysteresis, smooth, toSegments, type SmoothingConfig } from "./smoothing.js";
+import { preprocess } from "./preprocess.js";
 import type { VadDetector, VadResult } from "./types.js";
 
 export interface EnergyVadConfig {
@@ -37,7 +38,8 @@ export const DEFAULT_ENERGY_CONFIG: EnergyVadConfig = {
 export function createEnergyVad(config: EnergyVadConfig = DEFAULT_ENERGY_CONFIG): VadDetector {
   return {
     name: "energy",
-    detect(samples, sampleRate): VadResult {
+    detect(input, sampleRate): VadResult {
+      const samples = preprocess(input, sampleRate);
       const { frames, times, hopLength } = frameSignal(samples, sampleRate, config.frame);
       const scores = frames.map(energyDb);
 

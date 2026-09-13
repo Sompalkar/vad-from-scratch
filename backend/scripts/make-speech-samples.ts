@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { decodeWav, encodeWav } from "../src/audio/wav.js";
 import { rms } from "../src/vad/features.js";
-import { gaussianNoise } from "../src/test/synth.js";
+import { gaussianNoise, roomNoise } from "../src/test/synth.js";
 
 const SAMPLE_RATE = 16000;
 const OUT = join(import.meta.dirname, "..", "..", "samples");
@@ -34,6 +34,7 @@ interface Layout {
   utterances: [string, number][];
   gapSec: number;
   noiseLevel: number;
+  roomLevel?: number;
   /** Peak amplitude speech is normalised to. Default ≈ -6 dBFS, a normal mic level. */
   speechPeak?: number;
   bursts?: { at: number; sec: number; level: number }[];
@@ -48,7 +49,18 @@ const LAYOUTS: Layout[] = [
     utterances: [["Daniel", 0], ["Samantha", 4]],
     gapSec: 2,
     noiseLevel: 0.005,
-    bursts: [{ at: 1, sec: 0.4, level: 0.25 }],
+    bursts: [
+      { at: 1, sec: 0.4, level: 0.25 },
+      { at: 8.6, sec: 0.5, level: 0.15 },
+    ],
+  },
+  {
+    name: "speech-room-noise",
+    utterances: [["Karen", 0], ["Samantha", 5], ["Daniel", 2]],
+    gapSec: 1.5,
+    noiseLevel: 0.003,
+    roomLevel: 0.02,
+    bursts: [{ at: 0.4, sec: 0.5, level: 0.2 }],
   },
   { name: "speech-quiet", utterances: [["Samantha", 2], ["Daniel", 1]], gapSec: 1, noiseLevel: 0.004, speechPeak: 0.08 },
 ];
@@ -79,7 +91,9 @@ function build(layout: Layout, dir: string): { audio: Float32Array; speech: { st
 
   const rand = gaussianNoise(7);
   const audio = new Float32Array(total);
-  for (let i = 0; i < total; i++) audio[i] = layout.noiseLevel * rand();
+  for (let i = 0; i < total; i++) {
+    audio[i] = layout.noiseLevel * rand() + (layout.roomLevel ?? 0) * roomNoise(i, rand);
+  }
 
   const speech: { start: number; end: number }[] = [];
   let cursor = gap;

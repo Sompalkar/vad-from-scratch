@@ -13,7 +13,7 @@ Given audio, decide for every 10 ms slice: is someone speaking? It's the first b
 | layer | what | where |
 |---|---|---|
 | audio | RIFF/WAV decoder + encoder, 30 ms / 10 ms framing | `backend/src/audio` |
-| DSP | radix-2 FFT, Hann window, percentile | `backend/src/dsp` |
+| DSP | radix-2 FFT, Hann window, 100 Hz Butterworth high-pass, percentile | `backend/src/dsp` |
 | features | dB energy, zero-crossing rate, spectral flatness, speech-band ratio | `backend/src/vad/features.ts` |
 | detectors | `energy`, `spectral`, `learned` (logistic regression) | `backend/src/vad` |
 | smoothing | hysteresis, hangover, min-duration, segment extraction | `backend/src/vad/smoothing.ts` |
@@ -29,7 +29,9 @@ Given audio, decide for every 10 ms slice: is someone speaking? It's the first b
 
 **spectral** — the energy gate, plus two checks on *what* is loud: spectral flatness < 0.6 (speech is harmonic, noise is flat) and ≥ 65 % of energy in 100–4000 Hz. Applied per segment, not per frame, so fricatives don't punch holes in words. Rejects loud non-speech that energy VAD accepts.
 
-**learned** — the same four features fed to a logistic regression trained on the labelled samples, with a 7-frame moving average over its probabilities. Trained with `npm run train`, which also reports leave-one-file-out F1.
+**learned** — the same four features fed to a logistic regression trained on the labelled samples, behind an energy gate, with a 7-frame moving average over its probabilities. Trained with `npm run train`, which also reports leave-one-file-out F1.
+
+All three run through a 100 Hz high-pass first. Real rooms hum.
 
 ## Accuracy
 
@@ -37,16 +39,18 @@ Frame-level F1 on the bundled labelled samples (`npm run eval`). `speech-*` file
 
 | sample | energy | spectral | learned |
 |---|---|---|---|
-| speech-clean | 97.3% | 97.3% | 94.7% |
-| speech-two-voices | 95.3% | 95.4% | 95.3% |
-| speech-noisy | 85.4% | 88.7% | 91.3% |
-| speech-quiet | 81.9% | 84.9% | 85.8% |
-| speech-with-bursts | 88.9% | **94.9%** | 94.0% |
-| with-noise-bursts | **82.0%** | **97.1%** | 96.9% |
-| clean / noisy / quiet synthetic (4 files) | 97–98% | 97–98% | 97–98% |
-| **mean (10 files)** | **92.1%** | **94.9%** | **94.8%** |
+| speech-clean | 97.3% | 97.3% | 95.0% |
+| speech-two-voices | 95.2% | 95.3% | 93.7% |
+| speech-noisy | 84.9% | 88.6% | 86.4% |
+| speech-quiet | 81.4% | 84.4% | 79.5% |
+| speech-room-noise | 85.1% | 89.8% | 90.1% |
+| speech-with-bursts | 82.6% | **95.1%** | 94.1% |
+| with-noise-bursts | 81.5% | **96.6%** | 97.1% |
+| many-bursts | **69.3%** | 97.3% | 97.7% |
+| clean / noisy / quiet / room synthetic (5 files) | 88–98% | 97–98% | 97–98% |
+| **mean (13 files)** | **88.9%** | **94.7%** | **93.9%** |
 
-Two things to notice. Energy VAD is genuinely hard to beat on clean speech. And the first version of the spectral detector scored **65%** on real speech — every threshold tuned on synthetic data was wrong. [NOTES.md #10](NOTES.md) has the feature-distribution table that fixed it.
+Also tested on a 31 s real microphone recording (not in the repo): all three detectors agree on ~19 phrase segments; the streaming detector's longest continuous "speech" run is 1.7 s. Before the fixes in [NOTES.md #12](NOTES.md), the learned detector called the whole recording one segment — real room silence is tonal, and the model had only ever seen white noise.
 
 ## Run
 
@@ -69,7 +73,7 @@ Backend scripts: `npm test` (49 tests), `npm run eval`, `npm run train`, `npm ru
 
 ## What I'd do next
 
-- Real *recorded* audio with hand labels — the speech samples are TTS, which has no breaths, lip smacks or room reverb
+- Hand-labelled *recorded* audio in the eval set — the one real recording is unlabelled, and TTS has no breaths, lip smacks or room reverb
 - Replace logistic regression with a small MLP on a context window of frames (±5), so the model sees onset/offset shape, not one frame at a time
 - Per-band noise floor (spectral subtraction) instead of a single dB floor
 - Pitch detection (autocorrelation) as a fifth feature — the strongest single cue for voiced speech
