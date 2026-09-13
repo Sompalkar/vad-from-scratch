@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SAMPLE_RATE, synthesize } from "../test/synth.js";
+import { gaussianNoise, roomNoise, SAMPLE_RATE, synthesize } from "../test/synth.js";
 import { StreamingVad } from "./streaming.js";
 
 function runInChunks(audio: Float32Array, chunkSize: number) {
@@ -35,5 +35,24 @@ describe("StreamingVad", () => {
     const before = frames.find((f) => f.time > 1.4)?.noiseFloorDb ?? 0;
     const during = frames.find((f) => f.time > 2.4)?.noiseFloorDb ?? 0;
     expect(during - before).toBeLessThan(3);
+  });
+});
+
+describe("StreamingVad startup and clicks", () => {
+  it("does not call a tonal room speech while the floor settles", () => {
+    const normal = gaussianNoise(3);
+    const audio = new Float32Array(SAMPLE_RATE * 5);
+    for (let i = 0; i < audio.length; i++) audio[i] = 0.002 * normal() + 0.04 * roomNoise(i, normal);
+    const frames = new StreamingVad(SAMPLE_RATE).push(audio);
+    expect(frames.filter((f) => f.speech).length).toBe(0);
+  });
+
+  it("ignores a short click on a quiet room", () => {
+    const normal = gaussianNoise(5);
+    const audio = new Float32Array(SAMPLE_RATE * 2);
+    for (let i = 0; i < audio.length; i++) audio[i] = 0.003 * normal();
+    for (let i = 0; i < 160; i++) audio[SAMPLE_RATE + i] = 0.5 * normal(); // 10 ms click
+    const frames = new StreamingVad(SAMPLE_RATE).push(audio);
+    expect(frames.some((f) => f.speech)).toBe(false);
   });
 });
