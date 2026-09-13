@@ -28,7 +28,7 @@ export function extractFrameFeatures(samples: Float32Array, sampleRate: number):
     return [
       (energies[i] ?? noiseFloorDb) - noiseFloorDb,
       spectralFlatness(spectrum),
-      bandEnergyRatio(spectrum, sampleRate, 300, 3400),
+      bandEnergyRatio(spectrum, sampleRate, 100, 4000),
       zeroCrossingRate(frame),
     ];
   });

@@ -61,7 +61,8 @@ export function spectralFlatness(magnitude: Float64Array): number {
 
 /**
  * Fraction of spectral energy inside [lowHz, highHz], in [0, 1].
- * Speech is concentrated in ~300–3400 Hz; broadband noise is not.
+ * Real speech puts most of its energy in ~100–4000 Hz (fundamental + first
+ * three formants); broadband noise spreads evenly up to Nyquist.
  */
 export function bandEnergyRatio(
   magnitude: Float64Array,
