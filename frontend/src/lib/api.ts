@@ -1,4 +1,4 @@
-import type { DetectorName, Metrics, SampleInfo, Segment, VadResponse } from "./types";
+import type { DetectorName, Metrics, Params, ParamSpec, SampleInfo, Segment, VadResponse } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -9,6 +9,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(body.error ?? `${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
+}
+
+export function fetchParamSpecs(): Promise<Record<DetectorName, ParamSpec[]>> {
+  return request<{ params: Record<DetectorName, ParamSpec[]> }>("/health").then((h) => h.params);
 }
 
 export function listSamples(): Promise<SampleInfo[]> {
@@ -24,8 +28,9 @@ export async function fetchSample(name: string): Promise<{ wav: ArrayBuffer; lab
   return { wav, labels };
 }
 
-export function runVad(wav: ArrayBuffer, method: DetectorName): Promise<VadResponse> {
-  return request(`/vad?method=${method}`, { method: "POST", body: wav });
+export function runVad(wav: ArrayBuffer, method: DetectorName, params: Params): Promise<VadResponse> {
+  const query = new URLSearchParams({ method, params: JSON.stringify(params) });
+  return request(`/vad?${query}`, { method: "POST", body: wav });
 }
 
 export function evaluate(result: VadResponse, truth: Segment[]): Promise<Metrics> {

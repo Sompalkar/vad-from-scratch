@@ -140,3 +140,15 @@ One function (`extractFrameFeatures`) feeds both training and inference, so ther
 ### 6. Don't evaluate a model on its training data
 
 First eval showed learned = 97.7%, same as spectral — meaningless, since it had seen every file. Added leave-one-file-out to `npm run train`: train on four, test on the fifth. Held-out mean is also 97.7%. Notably `with-noise-bursts` held out still scores 97.1% — the model never saw a burst in training but learned "flat = noise" from ordinary background frames. Caveat: all five files come from one synthesiser, so this shows generalisation across files, not across real recording conditions.
+
+### 7. Canvases blank after adding sliders — the effect saw `clientWidth = 0`
+
+**Symptom:** waveform and energy canvases rendered empty. `canvas.width` was 0 while `clientWidth` was 976.
+
+**Cause:** the draw effect ran once on mount, at a moment when the canvas wasn't laid out yet (the browser pane was hidden), read `clientWidth = 0`, and never ran again. It had worked earlier purely by timing. The same bug would leave the waveform stretched after any window resize.
+
+**Fix:** a `useCanvas(draw, height)` hook that owns the DPR setup and redraws through a `ResizeObserver`. Both canvas components shrank to just their draw function. Lesson: any canvas sized from the DOM needs a resize path, not just a mount path.
+
+### Design: tunable parameters
+
+`PARAM_SPECS` in the backend is an explicit allowlist (key, label, range, step, default) per detector. `/health` publishes it so the UI builds sliders from data; `/vad?params={…}` accepts overrides which `sanitizeParams` clamps to range and strips of unknown keys. Sliders update the label continuously but only re-run detection on release. Demo: on `with-noise-bursts` under spectral, push max flatness to 1 — the burst *stays* rejected because band ratio still catches it; push band ratio to 0.35 and it turns green. Each check is visibly independent.

@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { Controls } from "@/components/Controls";
 import { EnergyTrack } from "@/components/EnergyTrack";
 import { MetricsPanel } from "@/components/MetricsPanel";
+import { ParamSliders } from "@/components/ParamSliders";
 import { Waveform } from "@/components/Waveform";
 import { usePlayback } from "@/hooks/usePlayback";
-import { evaluate, fetchSample, listSamples, runVad } from "@/lib/api";
-import type { DetectorName, Metrics, SampleInfo, Segment, VadResponse } from "@/lib/types";
+import { evaluate, fetchParamSpecs, fetchSample, listSamples, runVad } from "@/lib/api";
+import type { DetectorName, Metrics, Params, ParamSpec, SampleInfo, Segment, VadResponse } from "@/lib/types";
 
 interface Audio {
   wav: ArrayBuffer;
@@ -18,6 +19,8 @@ export default function Home() {
   const [samples, setSamples] = useState<SampleInfo[]>([]);
   const [selectedSample, setSelectedSample] = useState("");
   const [method, setMethod] = useState<DetectorName>("spectral");
+  const [specs, setSpecs] = useState<Partial<Record<DetectorName, ParamSpec[]>>>({});
+  const [params, setParams] = useState<Params>({});
   const [audio, setAudio] = useState<Audio | null>(null);
   const [result, setResult] = useState<VadResponse | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -28,13 +31,14 @@ export default function Home() {
 
   useEffect(() => {
     listSamples().then(setSamples).catch((e: Error) => setError(e.message));
+    fetchParamSpecs().then(setSpecs).catch((e: Error) => setError(e.message));
   }, []);
 
-  async function analyze(next: Audio, detector: DetectorName) {
+  async function analyze(next: Audio, detector: DetectorName, overrides: Params) {
     setBusy(true);
     setError(null);
     try {
-      const res = await runVad(next.wav, detector);
+      const res = await runVad(next.wav, detector, overrides);
       setResult(res);
       setMetrics(next.labels ? await evaluate(res, next.labels) : null);
     } catch (e) {
@@ -47,7 +51,7 @@ export default function Home() {
   async function loadAudio(next: Audio) {
     setAudio(next);
     playback.load(next.wav);
-    await analyze(next, method);
+    await analyze(next, method, params);
   }
 
   async function loadSample(name: string) {
@@ -67,7 +71,17 @@ export default function Home() {
 
   async function changeMethod(next: DetectorName) {
     setMethod(next);
-    if (audio) await analyze(audio, next);
+    setParams({});
+    if (audio) await analyze(audio, next, {});
+  }
+
+  async function commitParams(next: Params) {
+    if (audio) await analyze(audio, method, next);
+  }
+
+  async function resetParams() {
+    setParams({});
+    if (audio) await analyze(audio, method, {});
   }
 
   return (
@@ -88,6 +102,17 @@ export default function Home() {
         onUpload={loadUpload}
         onMethod={changeMethod}
       />
+
+      {specs[method] && (
+        <ParamSliders
+          specs={specs[method]}
+          values={params}
+          disabled={busy}
+          onChange={setParams}
+          onCommit={commitParams}
+          onReset={resetParams}
+        />
+      )}
 
       {error && <div className="rounded-md border border-rose-900 bg-rose-950 p-3 text-sm text-rose-200">{error}</div>}
 
@@ -119,9 +144,16 @@ export default function Home() {
 
           <section className="flex flex-col gap-2">
             <div className="text-sm text-zinc-400">
-              Frame energy (dB) · threshold {result.threshold.toFixed(1)} dB
+              {method === "learned"
+                ? `Speech probability · threshold ${result.threshold.toFixed(2)}`
+                : `Frame energy (dB) · threshold ${result.threshold.toFixed(1)} dB`}
             </div>
-            <EnergyTrack scores={result.frameScores} decisions={result.frameDecisions} threshold={result.threshold} />
+            <EnergyTrack
+              scores={result.frameScores}
+              decisions={result.frameDecisions}
+              threshold={result.threshold}
+              scale={method === "learned" ? "probability" : "db"}
+            />
           </section>
 
           {metrics && <MetricsPanel metrics={metrics} />}
