@@ -30,12 +30,14 @@ export const PARAM_SPECS: Record<string, ParamSpec[]> = {
   spectral: [
     { key: "marginDb", label: "Enter margin (dB)", min: 0, max: 30, step: 1, default: 10 },
     { key: "exitMarginDb", label: "Exit margin (dB)", min: 0, max: 30, step: 1, default: 5 },
-    { key: "maxFlatness", label: "Max flatness", min: 0.05, max: 1, step: 0.05, default: 0.5 },
-    { key: "minBandRatio", label: "Min band ratio", min: 0, max: 1, step: 0.05, default: 0.6 },
+    { key: "maxFlatness", label: "Max flatness", min: 0.05, max: 1, step: 0.05, default: 0.6 },
+    { key: "minBandRatio", label: "Min band ratio", min: 0, max: 1, step: 0.05, default: 0.65 },
+    { key: "minSpeechLikeFraction", label: "Min speech-like fraction", min: 0, max: 1, step: 0.05, default: 0.3 },
     ...SMOOTHING,
   ],
   learned: [
     { key: "threshold", label: "Probability threshold", min: 0.05, max: 0.95, step: 0.05, default: 0.5 },
+    { key: "smoothingWindow", label: "Smoothing window (frames)", min: 1, max: 21, step: 2, default: 7 },
     ...SMOOTHING,
   ],
 };
