@@ -93,3 +93,31 @@ Spectral F1 0.95, recall 1.0, precision 0.91 — the precision loss is the hango
 - **Frame energy track** with the adaptive threshold as a dashed line. This is the detector's actual decision surface; on `with-noise-bursts` the burst sits *above* the line but stays grey under spectral, which is the whole point of that detector.
 - **Metrics** update live when switching detector — on the burst sample precision goes 90.9% (spectral) → 66.7% (energy).
 - Waveform peaks come pre-downsampled from the backend (2000 min/max pairs) so the browser never touches raw samples.
+
+### Design: hysteresis (two thresholds)
+
+One threshold means a score hovering around it flickers speech/silence every frame. Hysteresis uses an *enter* threshold (floor + 12 dB) and a lower *exit* threshold (floor + 6 dB): once in speech, stay until energy drops well below where we came in. Same idea as a thermostat. Implemented as a tiny state machine in `smoothing.ts` and used by both detectors as the energy gate.
+
+### 5. Tuning the hangover on synthetic data is a trap
+
+`npm run eval` sweep of hangover length, mean F1 across the five samples:
+
+| hangover | energy | spectral |
+|---|---|---|
+| 8 frames | 92.8% | 96.2% |
+| 5 | 94.0% | 97.4% |
+| 3 | 94.9% | 98.3% |
+| 2 | 95.3% | 98.7% |
+
+Strictly monotonic — shorter always wins. That's because the synthetic speech is a continuous tone with no internal pauses, so the hangover can only add false positives. Real speech has 30–80 ms silences inside words (stop-consonant closures), which is what hangover exists to bridge. Settled on **4 frames (40 ms)** as a compromise and did not chase the 98.7%. Lesson: a metric on synthetic data tells you the *direction* of a change, not the *value* to ship.
+
+### Accuracy after hysteresis + hangover 4
+
+| sample | energy F1 | spectral F1 |
+|---|---|---|
+| clean-multi | 97.3% | 97.3% |
+| clean-single | 97.1% | 97.6% |
+| noisy-background | 97.3% | 98.2% |
+| quiet-speech | 98.5% | 99.0% |
+| with-noise-bursts | 82.0% | 97.1% |
+| **mean** | **94.5%** | **97.8%** |
