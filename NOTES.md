@@ -170,3 +170,41 @@ Transport: browser `AudioWorklet` (16 kHz mono, 1024-sample chunks) → WebSocke
 ### 9. GitHub API outage mid-project (not a code issue, but it cost time)
 
 PR creation and merges returned 500/502 for ~40 minutes while GitHub's status page said "operational". Bisecting branches and commit contents proved nothing — a trivial control branch off `main` failed too. Lessons: check with a control before bisecting your own work, and keep stacking branches locally so the outage doesn't block building. Because squash-merge rewrites history, each stacked branch was rebased onto the new `main` with `git rebase --onto main <old-parent>` before its PR was merged, keeping every PR diff to just its own commits.
+
+### 10. First contact with real speech: spectral collapsed to 65%, learned to 90%
+
+Generated real speech with macOS `say` (three voices, six phrases), trimmed each phrase, and assembled files with known gaps, noise and bursts so labels are exact (`npm run samples:speech`). First eval on those five files:
+
+| detector | synthetic mean | real-speech mean |
+|---|---|---|
+| energy | 94.5% | 92.1% |
+| spectral | 97.8% | **65.1%** |
+| learned | 97.7% | **90.1%** |
+
+The simplest detector was the most robust. Measured feature distributions on loud frames, speech vs non-speech:
+
+| feature | speech p10 / p50 / p90 | non-speech p10 / p50 / p90 |
+|---|---|---|
+| flatness | 0.16 / 0.34 / 0.59 | 0.61 / 0.85 / 0.86 |
+| band 300–3400 Hz | 0.06 / 0.41 / 0.74 | 0.33 / 0.39 / 0.47 |
+| band 100–4000 Hz | 0.74 / 0.98 / 1.00 | 0.43 / 0.49 / 0.72 |
+
+Three fixes, all from the table rather than intuition:
+
+1. **The 300–3400 Hz band was useless** on real voices (speech median 0.41 vs noise 0.39). The telephone band is where speech is *intelligible*, not where its energy is — the fundamental and first formant sit below 300 Hz. Switched to 100–4000 Hz, which separates cleanly.
+2. **Flatness cutoff 0.5 → 0.6.** 0.5 discarded a third of real speech frames.
+3. **Segment-level verification instead of per-frame AND.** Fricatives ("s", "f") are spectrally noise-like, so a per-frame rule punched holes in words. Now energy hysteresis proposes segments and a segment survives if ≥ 30% of its frames look like speech. Bursts fail ~100% of frames; sentences fail only their fricatives.
+
+Retrained the model on all ten files. After: energy 92.1%, spectral **94.9%**, learned **94.8%** (leave-one-out 92.5%). Streaming detector on real speech over WebSocket: F1 0.94.
+
+**Lesson:** every threshold that looked fine on synthetic data was wrong on real audio, and the *direction* of wrong was not guessable. Get real data as early as possible, even imperfect real data.
+
+### 11. Linear model's thin margin on noise bursts
+
+After retraining on real speech, the learned model scores synthetic noise bursts at ~0.46 — under the 0.5 line, but barely, and single frames tip over. Raising the threshold costs 1.5–5% recall on quiet speech for almost no gain, so 0.5 stays. Added a 7-frame moving average over probabilities before thresholding: a burst hovering at 0.46 stays a burst, a word at 1.0 with one "s" at 0.4 stays a word. Burst-file F1 90 → 97%.
+
+The residual thinness is the model, not the tuning: one frame of features can't tell "loud and flat because burst" from "loud and flat because fricative". The fix is context — a model that sees ±5 frames — which is the top item in README "what I'd do next".
+
+### Fixture note: speech levels
+
+First real-speech fixtures normalised speech to −20 dBFS *peak*, which puts its RMS around −32 dB — the same as the noise. Every detector scored 0% on `speech-noisy`. A normal mic peaks near −6 dBFS; fixed to 0.5 peak. Wrong fixture levels make every detector look broken.
