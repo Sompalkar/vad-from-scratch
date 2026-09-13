@@ -152,3 +152,17 @@ First eval showed learned = 97.7%, same as spectral — meaningless, since it ha
 ### Design: tunable parameters
 
 `PARAM_SPECS` in the backend is an explicit allowlist (key, label, range, step, default) per detector. `/health` publishes it so the UI builds sliders from data; `/vad?params={…}` accepts overrides which `sanitizeParams` clamps to range and strips of unknown keys. Sliders update the label continuously but only re-run detection on release. Demo: on `with-noise-bursts` under spectral, push max flatness to 1 — the burst *stays* rejected because band ratio still catches it; push band ratio to 0.35 and it turns green. Each check is visibly independent.
+
+### Design: streaming mode
+
+Offline detectors read the 10th percentile of *all* frame energies as the noise floor. Live audio has no future, so `StreamingVad` tracks the floor online: a stateful class that accepts samples in any chunk size, keeps a rolling buffer with the 20 ms overlap, and emits one decision per 10 ms hop. Same features and trained weights as the offline learned detector.
+
+Transport: browser `AudioWorklet` (16 kHz mono, 1024-sample chunks) → WebSocket `/stream` → JSON frames back. `ws` is the project's only runtime dependency; hand-rolling WebSocket framing isn't where the learning is.
+
+### 8. Noise floor climbed 25 dB during speech
+
+**Symptom:** first streaming test — the running noise-floor estimate rose from −46 dB to −21 dB across one second of speech, so the *next* utterance would have been nearly invisible.
+
+**Cause:** a plain exponential moving average with rise rate 0.01/frame. At 100 frames/s that closes 63% of the gap every second, and speech is a 37 dB gap.
+
+**Fix:** gate the floor update on the decision — adapt only during non-speech frames (rise 0.05, fall 0.2). Plus a tiny unconditional leak (0.0005) so a floor that starts far too low can still climb out. This is the textbook "decision-directed noise estimation" and it's why every real VAD is a feedback loop, not a pure function. Test now asserts floor drift < 3 dB across an utterance.

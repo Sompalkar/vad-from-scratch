@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Controls } from "@/components/Controls";
 import { EnergyTrack } from "@/components/EnergyTrack";
@@ -86,11 +87,16 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10">
-      <header>
-        <h1 className="text-2xl font-semibold">VAD from scratch</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Voice activity detection in TypeScript — no ML libraries, no audio libraries.
-        </p>
+      <header className="flex items-baseline justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">VAD from scratch</h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            Voice activity detection in TypeScript — no ML libraries, no audio libraries.
+          </p>
+        </div>
+        <Link href="/live" className="text-sm text-zinc-400 hover:text-zinc-200">
+          live mic mode →
+        </Link>
       </header>
 
       <Controls
