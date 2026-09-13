@@ -2,12 +2,18 @@
  * Streaming VAD: same features and model as the offline learned detector,
  * but the noise floor is tracked online instead of read off the whole file.
  *
+ * The floor is the 10th percentile of frame energies over a sliding window
+ * ("minimum statistics"). It needs no initial guess and cannot deadlock:
+ * an earlier version froze the update while it believed it heard speech,
+ * so a room the model misjudged stayed "speech" for ~30 s. See NOTES.md #14.
+ *
  * Feed samples in any chunk size; decisions come out one frame at a time
  * with the same hangover / hysteresis behaviour as offline.
  */
 import { DEFAULT_FRAME_CONFIG } from "../audio/frames.js";
 import { magnitudeSpectrum } from "../dsp/fft.js";
 import { DEFAULT_HIGHPASS_HZ, HighPass } from "../dsp/filter.js";
+import { percentile } from "../dsp/stats.js";
 import { predict, type LogisticModel } from "../ml/logistic.js";
 import { bandEnergyRatio, energyDb, spectralFlatness, zeroCrossingRate } from "./features.js";
 import model from "./model.json" with { type: "json" };
@@ -15,27 +21,25 @@ import model from "./model.json" with { type: "json" };
 export interface StreamingConfig {
   threshold: number;
   hangoverFrames: number;
+  /** Consecutive positive frames required before speech is declared. Filters clicks. */
+  onsetFrames: number;
   /** Energy gate above the running noise floor, dB (enter / stay). */
   marginDb: number;
   exitMarginDb: number;
-  /** Floor adaptation rate per non-speech frame (0–1). */
-  floorRise: number;
-  floorFall: number;
-  /** Tiny unconditional rise so the floor can recover if it starts too low. */
-  floorLeak: number;
-  /** Starting floor estimate before any audio is seen. */
-  initialFloorDb: number;
+  /** Frames of history the noise floor is estimated over. */
+  floorWindowFrames: number;
+  /** Which percentile of that history is the floor. */
+  floorPercentile: number;
 }
 
 export const DEFAULT_STREAMING_CONFIG: StreamingConfig = {
   threshold: 0.5,
   hangoverFrames: 4,
+  onsetFrames: 5,
   marginDb: 8,
   exitMarginDb: 4,
-  floorRise: 0.05,
-  floorFall: 0.2,
-  floorLeak: 0.0005,
-  initialFloorDb: -60,
+  floorWindowFrames: 300,
+  floorPercentile: 0.1,
 };
 
 export interface StreamFrame {
@@ -43,6 +47,7 @@ export interface StreamFrame {
   score: number;
   speech: boolean;
   noiseFloorDb: number;
+  energyDb: number;
 }
 
 export class StreamingVad {
@@ -51,8 +56,10 @@ export class StreamingVad {
   private buffer: Float32Array;
   private buffered = 0;
   private samplesSeen = 0;
-  private noiseFloorDb: number;
+  private readonly energyHistory: number[] = [];
+  private noiseFloorDb = 0;
   private hangover = 0;
+  private onset = 0;
   private loud = false;
   private readonly filter: HighPass;
 
@@ -64,7 +71,6 @@ export class StreamingVad {
     this.frameLength = Math.round((DEFAULT_FRAME_CONFIG.frameMs / 1000) * sampleRate);
     this.hopLength = Math.round((DEFAULT_FRAME_CONFIG.hopMs / 1000) * sampleRate);
     this.buffer = new Float32Array(this.frameLength * 4);
-    this.noiseFloorDb = config.initialFloorDb;
     this.filter = new HighPass(sampleRate, DEFAULT_HIGHPASS_HZ);
   }
 
@@ -86,6 +92,7 @@ export class StreamingVad {
 
   private processFrame(frame: Float32Array): StreamFrame {
     const db = energyDb(frame);
+    this.updateNoiseFloor(db);
     const spectrum = magnitudeSpectrum(frame);
     const score = predict(this.weights, [
       db - this.noiseFloorDb,
@@ -96,11 +103,11 @@ export class StreamingVad {
 
     const above = db - this.noiseFloorDb;
     this.loud = this.loud ? above >= this.config.exitMarginDb : above > this.config.marginDb;
-    const isSpeech = this.loud && score > this.config.threshold;
-    this.updateNoiseFloor(db, isSpeech);
+    const positive = this.loud && score > this.config.threshold;
+    this.onset = positive ? this.onset + 1 : 0;
 
     let speech: boolean;
-    if (isSpeech) {
+    if (this.onset >= this.config.onsetFrames) {
       this.hangover = this.config.hangoverFrames;
       speech = true;
     } else if (this.hangover > 0) {
@@ -110,23 +117,20 @@ export class StreamingVad {
       speech = false;
     }
 
-    return { time: this.samplesSeen / this.sampleRate, score, speech, noiseFloorDb: this.noiseFloorDb };
+    return {
+      time: this.samplesSeen / this.sampleRate,
+      score: round(score),
+      speech,
+      noiseFloorDb: round(this.noiseFloorDb),
+      energyDb: round(db),
+    };
   }
 
-  /**
-   * Noise-floor tracking gated by the decision: adapt only on non-speech
-   * frames, so speech can't drag the floor up. Falls fast (a fan switching
-   * off is tracked immediately), rises slower. A tiny leak applies always,
-   * so a floor that started far too low can still recover.
-   */
-  private updateNoiseFloor(db: number, isSpeech: boolean): void {
-    const gap = db - this.noiseFloorDb;
-    if (isSpeech) {
-      this.noiseFloorDb += this.config.floorLeak * Math.max(0, gap);
-      return;
-    }
-    const rate = gap < 0 ? this.config.floorFall : this.config.floorRise;
-    this.noiseFloorDb += rate * gap;
+  /** Sliding-window percentile: the quietest 10 % of the last 3 s. */
+  private updateNoiseFloor(db: number): void {
+    this.energyHistory.push(db);
+    if (this.energyHistory.length > this.config.floorWindowFrames) this.energyHistory.shift();
+    this.noiseFloorDb = percentile(this.energyHistory, this.config.floorPercentile);
   }
 
   private append(chunk: Float32Array): void {
@@ -139,4 +143,9 @@ export class StreamingVad {
     this.buffer.set(chunk, this.buffered);
     this.buffered = needed;
   }
+}
+
+/** Keep the JSON small: 100 frames/s × several fields. */
+function round(v: number): number {
+  return Math.round(v * 100) / 100;
 }

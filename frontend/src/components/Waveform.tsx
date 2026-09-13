@@ -48,6 +48,21 @@ export function Waveform({ peaks, detected, truth, playhead, onSeek }: Props) {
       }
       ctx.stroke();
 
+      // Time axis: a tick every second, labelled every few depending on length.
+      const labelEvery = peaks.durationSec > 20 ? 5 : peaks.durationSec > 8 ? 2 : 1;
+      ctx.fillStyle = "rgb(113, 113, 122)";
+      ctx.strokeStyle = "rgba(113, 113, 122, 0.4)";
+      ctx.font = "10px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      for (let s = 0; s <= peaks.durationSec; s++) {
+        const x = secToX(s);
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, s % labelEvery === 0 ? 8 : 4);
+        ctx.stroke();
+        if (s % labelEvery === 0 && s > 0) ctx.fillText(`${s}s`, x, 18);
+      }
+
       if (playhead !== null) {
         ctx.strokeStyle = "rgb(244, 244, 245)";
         ctx.lineWidth = 1.5;
