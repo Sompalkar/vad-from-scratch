@@ -9,7 +9,8 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "samples": "tsx scripts/make-samples.ts",
-    "eval": "tsx scripts/eval.ts"
+    "eval": "tsx scripts/eval.ts",
+    "train": "tsx scripts/train.ts"
   },
   "keywords": [],
   "author": "",
