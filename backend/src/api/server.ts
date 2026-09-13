@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { decodeWav } from "../audio/wav.js";
 import { frameMetrics, segmentsToFrames } from "../eval/metrics.js";
-import { createDetector, DETECTORS, isDetectorName } from "../vad/index.js";
+import { DETECTORS, isDetectorName } from "../vad/index.js";
+import { createDetectorWithParams, PARAM_SPECS, sanitizeParams } from "../vad/params.js";
 import type { Segment } from "../vad/smoothing.js";
 import { listSamples, readSample } from "./samples.js";
 import { waveformPeaks } from "./waveform.js";
@@ -26,7 +27,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const url = new URL(req.url ?? "/", "http://localhost");
   try {
     if (req.method === "GET" && url.pathname === "/health") {
-      json(res, 200, { ok: true, detectors: Object.keys(DETECTORS) });
+      json(res, 200, { ok: true, detectors: Object.keys(DETECTORS), params: PARAM_SPECS });
     } else if (req.method === "POST" && url.pathname === "/vad") {
       await handleVad(req, res, url);
     } else if (req.method === "POST" && url.pathname === "/evaluate") {
@@ -50,15 +51,17 @@ async function handleVad(req: IncomingMessage, res: ServerResponse, url: URL): P
     throw new Error(`Unknown method "${method}". Use one of: ${Object.keys(DETECTORS).join(", ")}`);
   }
 
+  const params = sanitizeParams(method, parseParams(url.searchParams.get("params")));
   const body = await readBody(req);
   const audio = decodeWav(body);
 
   const started = performance.now();
-  const result = createDetector(method).detect(audio.samples, audio.sampleRate);
+  const result = createDetectorWithParams(method, params).detect(audio.samples, audio.sampleRate);
   const elapsedMs = performance.now() - started;
 
   json(res, 200, {
     method,
+    params,
     sampleRate: audio.sampleRate,
     durationSec: audio.samples.length / audio.sampleRate,
     elapsedMs: Math.round(elapsedMs * 10) / 10,
@@ -69,6 +72,15 @@ async function handleVad(req: IncomingMessage, res: ServerResponse, url: URL): P
     frameDecisions: result.frameDecisions,
     waveform: waveformPeaks(audio.samples, audio.sampleRate, WAVEFORM_POINTS),
   });
+}
+
+function parseParams(raw: string | null): unknown {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error("params must be JSON");
+  }
 }
 
 interface EvaluateBody {

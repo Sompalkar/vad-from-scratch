@@ -20,7 +20,8 @@ const wav = encodeWav({ samples: synthesize({ durationSec: 3, speech }), sampleR
 describe("GET /health", () => {
   it("lists detectors", async () => {
     const body = await (await fetch(`${base}/health`)).json();
-    expect(body).toEqual({ ok: true, detectors: ["energy", "spectral", "learned"] });
+    expect(body.detectors).toEqual(["energy", "spectral", "learned"]);
+    expect(body.params.spectral.map((p: { key: string }) => p.key)).toContain("maxFlatness");
   });
 });
 
@@ -34,6 +35,14 @@ describe("POST /vad", () => {
     expect(body.segments[0].start).toBeCloseTo(1, 1);
     expect(body.waveform.min.length).toBeGreaterThan(0);
     expect(body.frameTimes.length).toBe(body.frameDecisions.length);
+  });
+
+  it("applies sanitized params", async () => {
+    const params = encodeURIComponent(JSON.stringify({ hangoverFrames: 15, bogus: 1 }));
+    const res = await fetch(`${base}/vad?method=energy&params=${params}`, { method: "POST", body: wav });
+    const body = await res.json();
+    expect(body.params).toEqual({ hangoverFrames: 15 });
+    expect(body.segments[0].end).toBeGreaterThan(2.1);
   });
 
   it("rejects an unknown method", async () => {
