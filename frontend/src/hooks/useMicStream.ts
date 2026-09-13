@@ -7,6 +7,7 @@ export interface LiveFrame {
   score: number;
   speech: boolean;
   noiseFloorDb: number;
+  energyDb: number;
 }
 
 const WS_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/^http/, "ws") + "/stream";
@@ -21,6 +22,7 @@ export function useMicStream() {
   const [frames, setFrames] = useState<LiveFrame[]>([]);
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const contextRef = useRef<AudioContext | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -39,11 +41,12 @@ export function useMicStream() {
 
   const start = useCallback(async () => {
     setError(null);
+    setConnecting(true);
     try {
       const socket = new WebSocket(WS_URL);
       await new Promise<void>((resolve, reject) => {
         socket.onopen = () => resolve();
-        socket.onerror = () => reject(new Error("Could not reach backend WebSocket"));
+        socket.onerror = () => reject(new Error("Backend not reachable. Start it with `cd backend && npm run dev`."));
       });
       socket.send(JSON.stringify({ type: "start", sampleRate: SAMPLE_RATE }));
       socket.onmessage = (event) => {
@@ -55,9 +58,13 @@ export function useMicStream() {
         }
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: false, autoGainControl: false },
-      });
+      const stream = await navigator.mediaDevices
+        .getUserMedia({
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: false, autoGainControl: false },
+        })
+        .catch(() => {
+          throw new Error("Microphone permission denied. Allow the microphone for this site and try again.");
+        });
       const context = new AudioContext({ sampleRate: SAMPLE_RATE });
       await context.audioWorklet.addModule("/pcm-worklet.js");
       const source = context.createMediaStreamSource(stream);
@@ -75,8 +82,10 @@ export function useMicStream() {
     } catch (e) {
       stop();
       setError((e as Error).message);
+    } finally {
+      setConnecting(false);
     }
   }, [stop]);
 
-  return { frames, active, error, start, stop };
+  return { frames, active, connecting, error, start, stop };
 }

@@ -47,6 +47,7 @@ export interface StreamFrame {
   score: number;
   speech: boolean;
   noiseFloorDb: number;
+  energyDb: number;
 }
 
 export class StreamingVad {
@@ -116,7 +117,13 @@ export class StreamingVad {
       speech = false;
     }
 
-    return { time: this.samplesSeen / this.sampleRate, score, speech, noiseFloorDb: this.noiseFloorDb };
+    return {
+      time: this.samplesSeen / this.sampleRate,
+      score: round(score),
+      speech,
+      noiseFloorDb: round(this.noiseFloorDb),
+      energyDb: round(db),
+    };
   }
 
   /** Sliding-window percentile: the quietest 10 % of the last 3 s. */
@@ -136,4 +143,9 @@ export class StreamingVad {
     this.buffer.set(chunk, this.buffered);
     this.buffered = needed;
   }
+}
+
+/** Keep the JSON small: 100 frames/s × several fields. */
+function round(v: number): number {
+  return Math.round(v * 100) / 100;
 }

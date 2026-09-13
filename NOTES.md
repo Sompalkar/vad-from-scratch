@@ -234,3 +234,15 @@ Retraining on the room-noise files fixed real silence but dropped the burst file
 ### Fixture bug: NaN silently became silence
 
 Adding room noise to the speech generator produced files of pure zeros. `roomNoise()` expected a *uniform* random source and was given a *normal* one; `Math.log(1 − 1.7)` is NaN, `0 × NaN` is NaN, and the WAV encoder's clamp turned NaN into 0. Every detector scored 0 % on six files before the cause was found. A peak-amplitude sanity check on generated fixtures would have caught it in seconds.
+
+### 14. Live mode said "speech" for the first 30 seconds (real Chrome, real room)
+
+**Symptom:** on starting the mic, SPEECH lit up for ~30 s with nobody talking, then everything worked.
+
+**Cause:** the streaming noise floor *started from a guess* (−60 dB) and was *only updated during non-speech frames* (the fix from #8). In a room whose idle noise the model scores as speech, that's a deadlock: floor too low ⇒ everything is "loud" ⇒ model says speech ⇒ floor frozen. The only escape was the 0.0005/frame safety leak, and `ln(15/4) / 0.0005 ≈ 2600 frames` = 26 s. Reproduced exactly with tonal synthetic room noise: 100 % speech until the leak caught up.
+
+**Fix:** replace the gated EMA with the estimator the offline detectors already use — the 10th percentile of frame energies over a sliding 3 s window ("minimum statistics"). No initial guess (frame 1's floor is frame 1's energy), no gate, nothing to deadlock. Speech has gaps, so the quietest 10 % of any 3 s is background. Same test: 0 % speech from t = 0. Agreement with the offline detector on the real recording went 93.5 → 95.4 %.
+
+**Also:** taps near the mic were registering. Offline we drop runs < 50 ms, but streaming can't see the future. Added a 50 ms onset delay (5 consecutive positive frames before declaring speech). A 10 ms click on a quiet room no longer triggers.
+
+**Lesson:** a feedback loop with a hand-set starting point will find the environment where the starting point is wrong. Prefer estimators that need no prior.
