@@ -20,6 +20,7 @@ import { magnitudeSpectrum } from "../dsp/fft.js";
 import { percentile } from "../dsp/stats.js";
 import { bandEnergyRatio, energyDb, spectralFlatness } from "./features.js";
 import { hysteresis, smooth, toSegments, type SmoothingConfig } from "./smoothing.js";
+import { preprocess } from "./preprocess.js";
 import type { VadDetector, VadResult } from "./types.js";
 
 export interface SpectralVadConfig {
@@ -56,7 +57,8 @@ export const DEFAULT_SPECTRAL_CONFIG: SpectralVadConfig = {
 export function createSpectralVad(config: SpectralVadConfig = DEFAULT_SPECTRAL_CONFIG): VadDetector {
   return {
     name: "spectral",
-    detect(samples, sampleRate): VadResult {
+    detect(input, sampleRate): VadResult {
+      const samples = preprocess(input, sampleRate);
       const { frames, times, hopLength } = frameSignal(samples, sampleRate, config.frame);
 
       const energies = frames.map(energyDb);
