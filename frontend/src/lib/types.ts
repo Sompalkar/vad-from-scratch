@@ -11,8 +11,20 @@ export interface WaveformPeaks {
   durationSec: number;
 }
 
+export interface ParamSpec {
+  key: string;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  default: number;
+}
+
+export type Params = Record<string, number>;
+
 export interface VadResponse {
   method: string;
+  params: Params;
   sampleRate: number;
   durationSec: number;
   elapsedMs: number;
@@ -37,5 +49,5 @@ export interface SampleInfo {
   hasLabels: boolean;
 }
 
-export const DETECTORS = ["energy", "spectral"] as const;
+export const DETECTORS = ["energy", "spectral", "learned"] as const;
 export type DetectorName = (typeof DETECTORS)[number];
