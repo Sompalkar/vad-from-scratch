@@ -35,11 +35,35 @@ const samples: Record<string, SynthOptions> = {
     ],
     bursts: [{ start: 2.5, end: 3.2 }],
   },
+  "room-noise": {
+    durationSec: 6,
+    speech: [
+      { start: 1, end: 2.2 },
+      { start: 3.5, end: 5 },
+    ],
+    noiseLevel: 0.003,
+    roomLevel: 0.02,
+    bursts: [{ start: 2.6, end: 3.1 }],
+  },
   "quiet-speech": {
     durationSec: 4,
     speech: [{ start: 1, end: 3 }],
     speechLevel: 0.05,
     noiseLevel: 0.008,
+  },
+  "many-bursts": {
+    durationSec: 8,
+    speech: [
+      { start: 1, end: 2 },
+      { start: 5, end: 6.5 },
+    ],
+    noiseLevel: 0.005,
+    bursts: [
+      { start: 0.2, end: 0.5 },
+      { start: 2.8, end: 3.4 },
+      { start: 3.9, end: 4.2 },
+      { start: 7, end: 7.6 },
+    ],
   },
 };
 

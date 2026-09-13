@@ -17,8 +17,13 @@ export interface SynthOptions {
   speech: SynthRegion[];
   /** RMS amplitude of the speech-like tone. */
   speechLevel?: number;
-  /** RMS amplitude of background noise. 0 = digital silence. */
+  /** RMS amplitude of white background noise. 0 = digital silence. */
   noiseLevel?: number;
+  /**
+   * Amplitude of "room" noise: mains hum harmonics plus low-frequency
+   * rumble. Real rooms are tonal, not white — see NOTES.md #12.
+   */
+  roomLevel?: number;
   /** Loud broadband noise bursts — "not speech" that an energy VAD will flag. */
   bursts?: SynthRegion[];
   burstLevel?: number;
@@ -33,13 +38,14 @@ export function synthesize(opts: SynthOptions): Float32Array {
     noiseLevel = 0.005,
     bursts = [],
     burstLevel = 0.3,
+    roomLevel = 0,
     seed = 1,
   } = opts;
   const rand = mulberry32(seed);
   const out = new Float32Array(Math.round(durationSec * SAMPLE_RATE));
 
   for (let i = 0; i < out.length; i++) {
-    out[i] = noiseLevel * gaussian(rand);
+    out[i] = noiseLevel * gaussian(rand) + roomLevel * roomNoise(i, () => gaussian(rand));
   }
 
   // Voiced speech: harmonics of a ~120 Hz pitch, shaped by vocal-tract
@@ -67,6 +73,18 @@ export function synthesize(opts: SynthOptions): Float32Array {
     }
   }
   return out;
+}
+
+let rumble = 0;
+/** 60 Hz hum with harmonics, plus a slowly wandering sub-100 Hz rumble. `normal` yields N(0,1). */
+export function roomNoise(i: number, normal: () => number): number {
+  const t = i / SAMPLE_RATE;
+  let s = 0;
+  for (const [hz, amp] of [[60, 1], [120, 0.5], [180, 0.3], [240, 0.2]] as const) {
+    s += amp * Math.sin(2 * Math.PI * hz * t);
+  }
+  rumble = 0.995 * rumble + 0.05 * normal(); // integrated noise ≈ brown
+  return 0.5 * s + 3 * rumble;
 }
 
 /** Gain at a frequency from three Gaussian formant peaks (roughly an "ah"). */
