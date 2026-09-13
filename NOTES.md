@@ -166,3 +166,7 @@ Transport: browser `AudioWorklet` (16 kHz mono, 1024-sample chunks) → WebSocke
 **Cause:** a plain exponential moving average with rise rate 0.01/frame. At 100 frames/s that closes 63% of the gap every second, and speech is a 37 dB gap.
 
 **Fix:** gate the floor update on the decision — adapt only during non-speech frames (rise 0.05, fall 0.2). Plus a tiny unconditional leak (0.0005) so a floor that starts far too low can still climb out. This is the textbook "decision-directed noise estimation" and it's why every real VAD is a feedback loop, not a pure function. Test now asserts floor drift < 3 dB across an utterance.
+
+### 9. GitHub API outage mid-project (not a code issue, but it cost time)
+
+PR creation and merges returned 500/502 for ~40 minutes while GitHub's status page said "operational". Bisecting branches and commit contents proved nothing — a trivial control branch off `main` failed too. Lessons: check with a control before bisecting your own work, and keep stacking branches locally so the outage doesn't block building. Because squash-merge rewrites history, each stacked branch was rebased onto the new `main` with `git rebase --onto main <old-parent>` before its PR was merged, keeping every PR diff to just its own commits.
