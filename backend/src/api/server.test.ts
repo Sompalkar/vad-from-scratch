@@ -20,7 +20,7 @@ const wav = encodeWav({ samples: synthesize({ durationSec: 3, speech }), sampleR
 describe("GET /health", () => {
   it("lists detectors", async () => {
     const body = await (await fetch(`${base}/health`)).json();
-    expect(body).toEqual({ ok: true, detectors: ["energy", "spectral"] });
+    expect(body).toEqual({ ok: true, detectors: ["energy", "spectral", "learned"] });
   });
 });
 

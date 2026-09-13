@@ -121,3 +121,22 @@ Strictly monotonic — shorter always wins. That's because the synthetic speech 
 | quiet-speech | 98.5% | 99.0% |
 | with-noise-bursts | 82.0% | 97.1% |
 | **mean** | **94.5%** | **97.8%** |
+
+### Design: learned detector (logistic regression, from scratch)
+
+Hand-picked cutoffs ("flatness < 0.5 AND band > 0.6") are replaced by a model that learns the weights from labelled frames. Four features per frame: energy above the file's noise floor, spectral flatness, speech-band ratio, zero-crossing rate. Standardised, then logistic regression trained by batch gradient descent (`src/ml/logistic.ts`, ~80 lines, log-loss + L2). `npm run train` writes `src/vad/model.json`; the detector ships with those weights.
+
+Learned weights make physical sense:
+
+| feature | weight | reads as |
+|---|---|---|
+| energy above floor | +0.73 | louder → speech |
+| flatness | −1.39 | flat spectrum → noise |
+| band ratio | +1.48 | energy in 300–3400 Hz → speech |
+| zcr | −1.47 | hissy → not voiced |
+
+One function (`extractFrameFeatures`) feeds both training and inference, so there is no train/serve skew by construction.
+
+### 6. Don't evaluate a model on its training data
+
+First eval showed learned = 97.7%, same as spectral — meaningless, since it had seen every file. Added leave-one-file-out to `npm run train`: train on four, test on the fifth. Held-out mean is also 97.7%. Notably `with-noise-bursts` held out still scores 97.1% — the model never saw a burst in training but learned "flat = noise" from ordinary background frames. Caveat: all five files come from one synthesiser, so this shows generalisation across files, not across real recording conditions.
