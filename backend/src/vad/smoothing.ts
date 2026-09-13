@@ -53,6 +53,24 @@ export function smooth(decisions: boolean[], config: SmoothingConfig): boolean[]
   return dropShortRuns(applyHangover(decisions, config.hangoverFrames), config.minSpeechFrames);
 }
 
+/**
+ * Two-threshold decision (hysteresis). Enter speech when the score rises
+ * above `enter`; stay in speech until it drops below `exit` (< enter).
+ * Like a thermostat: stops the decision flickering when a score hovers
+ * around a single cutoff.
+ */
+export function hysteresis(scores: number[], enter: number, exit: number): boolean[] {
+  if (exit > enter) throw new Error("exit threshold must not exceed enter threshold");
+  const out = new Array<boolean>(scores.length);
+  let inSpeech = false;
+  for (let i = 0; i < scores.length; i++) {
+    const score = scores[i] ?? -Infinity;
+    inSpeech = inSpeech ? score >= exit : score > enter;
+    out[i] = inSpeech;
+  }
+  return out;
+}
+
 export interface Segment {
   /** Seconds. */
   start: number;
