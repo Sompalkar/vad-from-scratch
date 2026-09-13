@@ -12,7 +12,7 @@ import { DEFAULT_FRAME_CONFIG, frameSignal, type FrameConfig } from "../audio/fr
 import { magnitudeSpectrum } from "../dsp/fft.js";
 import { percentile } from "../dsp/stats.js";
 import { bandEnergyRatio, energyDb, spectralFlatness } from "./features.js";
-import { smooth, toSegments, type SmoothingConfig } from "./smoothing.js";
+import { hysteresis, smooth, toSegments, type SmoothingConfig } from "./smoothing.js";
 import type { VadDetector, VadResult } from "./types.js";
 
 export interface SpectralVadConfig {
@@ -20,6 +20,7 @@ export interface SpectralVadConfig {
   smoothing: SmoothingConfig;
   noisePercentile: number;
   marginDb: number;
+  exitMarginDb: number;
   floorDb: number;
   /** Frames flatter than this are treated as noise. */
   maxFlatness: number;
@@ -31,9 +32,10 @@ export interface SpectralVadConfig {
 
 export const DEFAULT_SPECTRAL_CONFIG: SpectralVadConfig = {
   frame: DEFAULT_FRAME_CONFIG,
-  smoothing: { hangoverFrames: 8, minSpeechFrames: 5 },
+  smoothing: { hangoverFrames: 4, minSpeechFrames: 5 },
   noisePercentile: 0.1,
   marginDb: 10,
+  exitMarginDb: 5,
   floorDb: -55,
   maxFlatness: 0.5,
   minBandRatio: 0.6,
@@ -51,8 +53,11 @@ export function createSpectralVad(config: SpectralVadConfig = DEFAULT_SPECTRAL_C
       const noiseFloor = percentile(energies, config.noisePercentile);
       const threshold = Math.max(noiseFloor + config.marginDb, config.floorDb);
 
+      const exitThreshold = Math.max(noiseFloor + config.exitMarginDb, config.floorDb);
+      const loud = hysteresis(energies, threshold, exitThreshold);
+
       const raw = frames.map((frame, i) => {
-        if ((energies[i] ?? -Infinity) <= threshold) return false;
+        if (!loud[i]) return false;
         const spectrum = magnitudeSpectrum(frame);
         const flatness = spectralFlatness(spectrum);
         const band = bandEnergyRatio(spectrum, sampleRate, config.bandLowHz, config.bandHighHz);

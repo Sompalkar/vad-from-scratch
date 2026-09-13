@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyHangover, dropShortRuns, toSegments } from "./smoothing.js";
+import { applyHangover, dropShortRuns, hysteresis, toSegments } from "./smoothing.js";
 
 describe("applyHangover", () => {
   it("bridges gaps shorter than the hangover", () => {
@@ -27,5 +27,17 @@ describe("toSegments", () => {
       { start: 0.01, end: 0.03 },
       { start: 0.04, end: 0.05 },
     ]);
+  });
+});
+
+describe("hysteresis", () => {
+  it("enters above the high threshold and exits below the low one", () => {
+    const scores = [0, 5, 11, 8, 7, 4, 8, 11];
+    // enter at >10, exit at <6
+    expect(hysteresis(scores, 10, 6)).toEqual([false, false, true, true, true, false, false, true]);
+  });
+
+  it("rejects an exit threshold above enter", () => {
+    expect(() => hysteresis([], 5, 10)).toThrow();
   });
 });
