@@ -10,7 +10,8 @@
     "start": "tsx src/main.ts",
     "samples": "tsx scripts/make-samples.ts",
     "eval": "tsx scripts/eval.ts",
-    "train": "tsx scripts/train.ts"
+    "train": "tsx scripts/train.ts",
+    "samples:speech": "tsx scripts/make-speech-samples.ts"
   },
   "keywords": [],
   "author": "",
