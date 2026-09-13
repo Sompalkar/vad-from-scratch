@@ -1,10 +1,12 @@
 import { createEnergyVad } from "./energy.js";
+import { createLearnedVad } from "./learned.js";
 import { createSpectralVad } from "./spectral.js";
 import type { VadDetector } from "./types.js";
 
 export const DETECTORS: Record<string, () => VadDetector> = {
   energy: createEnergyVad,
   spectral: createSpectralVad,
+  learned: createLearnedVad,
 };
 
 export type DetectorName = keyof typeof DETECTORS;
