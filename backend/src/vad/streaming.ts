@@ -81,7 +81,7 @@ export class StreamingVad {
     const score = predict(this.weights, [
       db - this.noiseFloorDb,
       spectralFlatness(spectrum),
-      bandEnergyRatio(spectrum, this.sampleRate, 300, 3400),
+      bandEnergyRatio(spectrum, this.sampleRate, 100, 4000),
       zeroCrossingRate(frame),
     ]);
 

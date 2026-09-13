@@ -1,11 +1,18 @@
 /**
  * Spectral VAD: energy gate + "does this sound like speech?" checks.
  *
- * Energy alone flags any loud noise. On top of the energy gate we require:
- *  - low spectral flatness  → the frame is tonal/harmonic, not hiss
- *  - high speech-band ratio → most energy sits where speech lives
+ * Energy alone flags any loud noise. Each loud frame is also tested for:
+ *  - low spectral flatness  → tonal/harmonic, not hiss
+ *  - high speech-band ratio → most energy sits in 100–4000 Hz
  *
- * A frame is speech only if all three agree.
+ * The checks are applied per *segment*, not per frame: fricatives ("s",
+ * "f") are noise-like on their own, so a per-frame AND rule punches holes
+ * in words. Instead, energy proposes segments and a segment survives if
+ * enough of its frames look like speech. A noise burst fails nearly all of
+ * its frames; a sentence fails only the fricatives.
+ *
+ * Thresholds were set from feature distributions on real speech, not by
+ * hand: see NOTES.md #10 for the table.
  */
 
 import { DEFAULT_FRAME_CONFIG, frameSignal, type FrameConfig } from "../audio/frames.js";
@@ -26,6 +33,8 @@ export interface SpectralVadConfig {
   maxFlatness: number;
   /** Frames with less speech-band energy than this are treated as noise. */
   minBandRatio: number;
+  /** A segment is kept if at least this fraction of its frames pass. */
+  minSpeechLikeFraction: number;
   bandLowHz: number;
   bandHighHz: number;
 }
@@ -37,10 +46,11 @@ export const DEFAULT_SPECTRAL_CONFIG: SpectralVadConfig = {
   marginDb: 10,
   exitMarginDb: 5,
   floorDb: -55,
-  maxFlatness: 0.5,
-  minBandRatio: 0.6,
-  bandLowHz: 300,
-  bandHighHz: 3400,
+  maxFlatness: 0.6,
+  minBandRatio: 0.65,
+  minSpeechLikeFraction: 0.3,
+  bandLowHz: 100,
+  bandHighHz: 4000,
 };
 
 export function createSpectralVad(config: SpectralVadConfig = DEFAULT_SPECTRAL_CONFIG): VadDetector {
@@ -56,7 +66,7 @@ export function createSpectralVad(config: SpectralVadConfig = DEFAULT_SPECTRAL_C
       const exitThreshold = Math.max(noiseFloor + config.exitMarginDb, config.floorDb);
       const loud = hysteresis(energies, threshold, exitThreshold);
 
-      const raw = frames.map((frame, i) => {
+      const speechLike = frames.map((frame, i) => {
         if (!loud[i]) return false;
         const spectrum = magnitudeSpectrum(frame);
         const flatness = spectralFlatness(spectrum);
@@ -64,6 +74,7 @@ export function createSpectralVad(config: SpectralVadConfig = DEFAULT_SPECTRAL_C
         return flatness < config.maxFlatness && band > config.minBandRatio;
       });
 
+      const raw = keepSpeechLikeRuns(loud, speechLike, config.minSpeechLikeFraction);
       const decisions = smooth(raw, config.smoothing);
       return {
         frameDecisions: decisions,
@@ -74,4 +85,22 @@ export function createSpectralVad(config: SpectralVadConfig = DEFAULT_SPECTRAL_C
       };
     },
   };
+}
+
+/** For each run of loud frames, keep it only if enough frames are speech-like. */
+function keepSpeechLikeRuns(loud: boolean[], speechLike: boolean[], minFraction: number): boolean[] {
+  const out = new Array<boolean>(loud.length).fill(false);
+  let runStart = -1;
+  for (let i = 0; i <= loud.length; i++) {
+    const active = i < loud.length && loud[i];
+    if (active && runStart < 0) {
+      runStart = i;
+    } else if (!active && runStart >= 0) {
+      let passing = 0;
+      for (let j = runStart; j < i; j++) if (speechLike[j]) passing++;
+      if (passing / (i - runStart) >= minFraction) out.fill(true, runStart, i);
+      runStart = -1;
+    }
+  }
+  return out;
 }

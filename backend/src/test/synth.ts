@@ -83,6 +83,12 @@ function formantEnvelope(hz: number): number {
   return gain;
 }
 
+/** Deterministic standard-normal generator. */
+export function gaussianNoise(seed: number): () => number {
+  const rand = mulberry32(seed);
+  return () => gaussian(rand);
+}
+
 /** Small deterministic PRNG so tests are reproducible. */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;

@@ -27,24 +27,26 @@ Given audio, decide for every 10 ms slice: is someone speaking? It's the first b
 
 **energy** — frame loudness in dB vs an adaptive threshold: noise floor (10th percentile of frame energies) + margin. Hysteresis: enter at +12 dB, exit at +6 dB.
 
-**spectral** — the energy gate, plus two checks on *what* is loud: spectral flatness < 0.5 (speech is harmonic, noise is flat) and ≥ 60 % of energy in 300–3400 Hz (where speech lives). Rejects loud non-speech that energy VAD accepts.
+**spectral** — the energy gate, plus two checks on *what* is loud: spectral flatness < 0.6 (speech is harmonic, noise is flat) and ≥ 65 % of energy in 100–4000 Hz. Applied per segment, not per frame, so fricatives don't punch holes in words. Rejects loud non-speech that energy VAD accepts.
 
-**learned** — the same four features fed to a logistic regression trained on the labelled samples. Weights it learned: energy +0.73, band ratio +1.48, flatness −1.39, ZCR −1.47. Trained with `npm run train`; leave-one-file-out F1 matches training F1.
+**learned** — the same four features fed to a logistic regression trained on the labelled samples, with a 7-frame moving average over its probabilities. Trained with `npm run train`, which also reports leave-one-file-out F1.
 
 ## Accuracy
 
-Frame-level F1 on the bundled labelled samples (`npm run eval`):
+Frame-level F1 on the bundled labelled samples (`npm run eval`). `speech-*` files are real synthesised voices (macOS TTS, three speakers) placed on known noise with exact labels; the rest are fully synthetic tones.
 
 | sample | energy | spectral | learned |
 |---|---|---|---|
-| clean-multi | 97.3% | 97.3% | 97.3% |
-| clean-single | 97.1% | 97.6% | 97.1% |
-| noisy-background | 97.3% | 98.2% | 98.0% |
-| quiet-speech | 98.5% | 99.0% | 99.0% |
-| with-noise-bursts | **82.0%** | **97.1%** | **97.1%** |
-| mean | 94.5% | 97.8% | 97.7% |
+| speech-clean | 97.3% | 97.3% | 94.7% |
+| speech-two-voices | 95.3% | 95.4% | 95.3% |
+| speech-noisy | 85.4% | 88.7% | 91.3% |
+| speech-quiet | 81.9% | 84.9% | 85.8% |
+| speech-with-bursts | 88.9% | **94.9%** | 94.0% |
+| with-noise-bursts | **82.0%** | **97.1%** | 96.9% |
+| clean / noisy / quiet synthetic (4 files) | 97–98% | 97–98% | 97–98% |
+| **mean (10 files)** | **92.1%** | **94.9%** | **94.8%** |
 
-The burst row is the point: energy VAD calls a loud noise burst "speech"; the other two don't. Samples are synthetic (formant-shaped harmonics + Gaussian noise) — see [NOTES.md](NOTES.md) for why that matters and what it doesn't prove.
+Two things to notice. Energy VAD is genuinely hard to beat on clean speech. And the first version of the spectral detector scored **65%** on real speech — every threshold tuned on synthetic data was wrong. [NOTES.md #10](NOTES.md) has the feature-distribution table that fixed it.
 
 ## Run
 
@@ -59,7 +61,7 @@ cd frontend && npm install && npm run dev
 - http://localhost:3000 — pick a sample or upload a WAV, switch detectors, drag the parameter sliders, watch the threshold line move
 - http://localhost:3000/live — microphone → WebSocket → streaming detector, ~10 ms per decision
 
-Backend scripts: `npm test` (45 tests), `npm run eval`, `npm run train`, `npm run samples`.
+Backend scripts: `npm test` (49 tests), `npm run eval`, `npm run train`, `npm run samples` (synthetic), `npm run samples:speech` (real voices — macOS only, uses `say`; the output is already checked in).
 
 ## Build log
 
@@ -67,7 +69,7 @@ Backend scripts: `npm test` (45 tests), `npm run eval`, `npm run train`, `npm ru
 
 ## What I'd do next
 
-- Real recorded audio with hand labels — everything here is synthetic
+- Real *recorded* audio with hand labels — the speech samples are TTS, which has no breaths, lip smacks or room reverb
 - Replace logistic regression with a small MLP on a context window of frames (±5), so the model sees onset/offset shape, not one frame at a time
 - Per-band noise floor (spectral subtraction) instead of a single dB floor
 - Pitch detection (autocorrelation) as a fifth feature — the strongest single cue for voiced speech
